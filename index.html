@@ -3,13 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Rush ID Automator</title>
+    <title>Lucas PrintShop - Dynamic Rush ID Automator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    
+    <style id="printPageStyle">
+        @page { size: A4; margin: 5mm; }
+    </style>
+
     <style>
-        /* A4 Setup */
+        :root {
+            /* Default border color */
+            --border-color: #000000;
+        }
+
+        /* Canvas Setup */
         .print-area { 
+            /* Default to A4 */
             width: 210mm; 
             min-height: 297mm; 
             padding: 10mm; 
@@ -18,14 +29,14 @@
             display: flex;
             flex-direction: column;
             align-items: start;
+            transition: width 0.3s ease, min-height 0.3s ease;
         }
         
-        /* Each grid is completely independent and shrinks to fit the images exactly */
         .id-grid {
             display: grid;
             gap: 0;
-            border-top: 1px solid black;
-            border-left: 1px solid black;
+            border-top: 1px solid var(--border-color);
+            border-left: 1px solid var(--border-color);
             width: max-content; 
             margin-top: -1px; 
             justify-content: start;
@@ -35,35 +46,24 @@
             display: none;
         }
 
-        /* Images handle only the Right and Bottom borders */
         .border-overlap {
-            border-right: 1px solid black;
-            border-bottom: 1px solid black;
+            border-right: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
             box-sizing: border-box; 
             display: block;
         }
 
         /* --- PRINT SPECIFIC RULES --- */
         @media print {
-            body, html { 
-                background: white; 
-                padding: 0; 
-                margin: 0; 
-            }
-            .no-print { 
-                display: none !important; 
-            }
+            body, html { background: white; padding: 0; margin: 0; }
+            .no-print { display: none !important; }
             .print-area { 
                 margin: 0; 
-                padding: 0; /* Let the printer dialog handle margins */
+                padding: 0; 
                 border: none; 
                 box-shadow: none !important; 
-                width: auto; 
-                min-height: auto !important; /* THE FIX: Stops the extra blank page */
-            }
-            @page {
-                size: A4;
-                margin: 5mm; /* Small default margin so the printer doesn't cut off the edges */
+                width: auto !important; 
+                min-height: auto !important; 
             }
         }
     </style>
@@ -72,7 +72,9 @@
 
     <div class="max-w-5xl mx-auto no-print">
         <div class="bg-white p-6 rounded-xl shadow-lg mb-6">
-            <h1 class="text-xl font-bold mb-4">Rush ID Dynamic Packager</h1>
+            <div class="flex justify-between items-center mb-4">
+                <h1 class="text-2xl font-bold text-gray-800">Rush ID Dynamic Packager</h1>
+            </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="space-y-4">
@@ -83,7 +85,22 @@
                     <button id="cropBtn" class="w-full bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700 transition">1. Apply Crop</button>
                 </div>
 
-                <div class="space-y-6">
+                <div class="space-y-4">
+                    
+                    <div class="bg-gray-50 border border-gray-200 p-4 rounded-lg flex gap-4">
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Paper Size</label>
+                            <select id="paperSize" onchange="updateSettings()" class="w-full border-gray-300 rounded p-2 text-sm bg-white shadow-sm border focus:ring-blue-500 focus:border-blue-500">
+                                <option value="A4">A4 (210 x 297 mm)</option>
+                                <option value="Letter">Letter / Short (8.5 x 11 in)</option>
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Border Color</label>
+                            <input type="color" id="borderColor" value="#000000" oninput="updateSettings()" class="w-full h-9 border border-gray-300 rounded cursor-pointer shadow-sm p-0.5 bg-white">
+                        </div>
+                    </div>
+
                     <div class="bg-blue-50 p-4 rounded-lg">
                         <h2 class="font-bold mb-3 text-blue-800">2. Add Photos to Sheet</h2>
                         <div class="grid grid-cols-3 gap-2">
@@ -103,8 +120,8 @@
                         <button onclick="clearQueue()" class="mt-4 text-red-500 text-sm font-semibold hover:underline">Clear All</button>
                     </div>
 
-                    <div class="flex gap-2">
-                        <button onclick="window.print()" class="flex-1 bg-green-600 text-white py-4 rounded-lg font-bold shadow-md hover:bg-green-700 transition">3. PRINT NOW</button>
+                    <div class="flex gap-2 pt-2">
+                        <button onclick="window.print()" class="flex-1 bg-green-600 text-white py-4 rounded-lg font-bold shadow-md hover:bg-green-700 transition text-lg">3. PRINT NOW</button>
                     </div>
                 </div>
             </div>
@@ -125,10 +142,31 @@
         // Configuration
         const sizes = {
             '2x2': { w: 2 * pxPerInch, h: 2 * pxPerInch },
-            // LANDSCAPE CELL: 1.77" width, 1.37" height 
             'passport': { w: 1.77 * pxPerInch, h: 1.37 * pxPerInch }, 
             '1x1': { w: 1 * pxPerInch, h: 1 * pxPerInch }
         };
+
+        // --- NEW: Settings Logic ---
+        function updateSettings() {
+            // Update Border Color
+            const color = document.getElementById('borderColor').value;
+            document.documentElement.style.setProperty('--border-color', color);
+
+            // Update Paper Size (Visual preview + Print setting injection)
+            const paper = document.getElementById('paperSize').value;
+            const printArea = document.getElementById('printArea');
+            const printStyle = document.getElementById('printPageStyle');
+
+            if (paper === 'A4') {
+                printArea.style.width = '210mm';
+                printArea.style.minHeight = '297mm';
+                printStyle.innerHTML = '@page { size: A4; margin: 5mm; }';
+            } else if (paper === 'Letter') {
+                printArea.style.width = '8.5in';
+                printArea.style.minHeight = '11in';
+                printStyle.innerHTML = '@page { size: letter; margin: 5mm; }';
+            }
+        }
 
         // Initialize Cropper
         document.getElementById('imageInput').onchange = (e) => {
@@ -185,7 +223,7 @@
                     canvas.width = tempImg.width;
                     canvas.height = tempImg.height;
 
-                    // Rotate 90 degrees CCW to point top of head left
+                    // Rotate 90 degrees CCW
                     ctx.translate(canvas.width / 2, canvas.height / 2);
                     ctx.rotate(-90 * Math.PI / 180);
                     ctx.drawImage(tempImg, -tempImg.width / 2, -tempImg.height / 2);
