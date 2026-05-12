@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Rush ID Automator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <style>
+        /* A4 Setup */
+        .print-area { 
+            width: 210mm; 
+            min-height: 297mm; 
+            padding: 10mm; 
+            margin: 20px auto; 
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: start;
+        }
+        
+        /* Each grid is completely independent and shrinks to fit the images exactly */
+        .id-grid {
+            display: grid;
+            gap: 0;
+            border-top: 1px solid black;
+            border-left: 1px solid black;
+            width: max-content; 
+            margin-top: -1px; 
+            justify-content: start;
+        }
+
+        .id-grid:empty {
+            display: none;
+        }
+
+        /* Images handle only the Right and Bottom borders */
+        .border-overlap {
+            border-right: 1px solid black;
+            border-bottom: 1px solid black;
+            box-sizing: border-box; 
+            display: block;
+        }
+
+        /* --- PRINT SPECIFIC RULES --- */
+        @media print {
+            body, html { 
+                background: white; 
+                padding: 0; 
+                margin: 0; 
+            }
+            .no-print { 
+                display: none !important; 
+            }
+            .print-area { 
+                margin: 0; 
+                padding: 0; /* Let the printer dialog handle margins */
+                border: none; 
+                box-shadow: none !important; 
+                width: auto; 
+                min-height: auto !important; /* THE FIX: Stops the extra blank page */
+            }
+            @page {
+                size: A4;
+                margin: 5mm; /* Small default margin so the printer doesn't cut off the edges */
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-200 p-4 font-sans">
+
+    <div class="max-w-5xl mx-auto no-print">
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-6">
+            <h1 class="text-xl font-bold mb-4">Rush ID Dynamic Packager</h1>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-4">
+                    <input type="file" id="imageInput" accept="image/*" class="w-full text-sm block text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    <div class="h-64 bg-gray-100 rounded overflow-hidden border border-dashed border-gray-300">
+                        <img id="imageToCrop" class="max-w-full">
+                    </div>
+                    <button id="cropBtn" class="w-full bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700 transition">1. Apply Crop</button>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <h2 class="font-bold mb-3 text-blue-800">2. Add Photos to Sheet</h2>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="addToQueue('2x2')" class="bg-white border border-blue-200 p-2 rounded shadow-sm hover:bg-blue-100 transition active:scale-95">
+                                <div class="text-xs uppercase font-bold text-gray-700">2x2</div>
+                                <div class="text-lg text-blue-600 font-bold">+</div>
+                            </button>
+                            <button onclick="addToQueue('passport')" class="bg-white border border-blue-200 p-2 rounded shadow-sm hover:bg-blue-100 transition active:scale-95">
+                                <div class="text-xs uppercase font-bold text-gray-700">Passport<br><span class="text-[9px] text-gray-400">(Landscape, Rotated)</span></div>
+                                <div class="text-lg text-blue-600 font-bold">+</div>
+                            </button>
+                            <button onclick="addToQueue('1x1')" class="bg-white border border-blue-200 p-2 rounded shadow-sm hover:bg-blue-100 transition active:scale-95">
+                                <div class="text-xs uppercase font-bold text-gray-700">1x1</div>
+                                <div class="text-lg text-blue-600 font-bold">+</div>
+                            </button>
+                        </div>
+                        <button onclick="clearQueue()" class="mt-4 text-red-500 text-sm font-semibold hover:underline">Clear All</button>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="window.print()" class="flex-1 bg-green-600 text-white py-4 rounded-lg font-bold shadow-md hover:bg-green-700 transition">3. PRINT NOW</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="printArea" class="print-area shadow-xl relative">
+        <div id="grid-2x2" class="id-grid" style="grid-template-columns: repeat(3, max-content);"></div>
+        <div id="grid-passport" class="id-grid" style="grid-template-columns: repeat(3, max-content);"></div>
+        <div id="grid-1x1" class="id-grid" style="grid-template-columns: repeat(6, max-content);"></div>
+    </div>
+
+    <script>
+        let cropper;
+        let croppedImageData = null;
+        const pxPerInch = 96;
+
+        // Configuration
+        const sizes = {
+            '2x2': { w: 2 * pxPerInch, h: 2 * pxPerInch },
+            // LANDSCAPE CELL: 1.77" width, 1.37" height 
+            'passport': { w: 1.77 * pxPerInch, h: 1.37 * pxPerInch }, 
+            '1x1': { w: 1 * pxPerInch, h: 1 * pxPerInch }
+        };
+
+        // Initialize Cropper
+        document.getElementById('imageInput').onchange = (e) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = document.getElementById('imageToCrop');
+                img.src = event.target.result;
+                if (cropper) cropper.destroy();
+                cropper = new Cropper(img, { aspectRatio: 1, viewMode: 1 });
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        };
+
+        document.getElementById('cropBtn').onclick = () => {
+            if (!cropper) return;
+            croppedImageData = cropper.getCroppedCanvas().toDataURL('image/jpeg', 1.0);
+            
+            const btn = document.getElementById('cropBtn');
+            const originalText = btn.innerText;
+            btn.innerText = "✓ Cropped!";
+            btn.classList.replace('bg-blue-600', 'bg-green-600');
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.classList.replace('bg-green-600', 'bg-blue-600');
+            }, 1000);
+        };
+
+        function addToQueue(type) {
+            if (!croppedImageData) return alert("Please upload and crop an image first!");
+            
+            let targetGrid;
+            if (type === '2x2') targetGrid = document.getElementById('grid-2x2');
+            else if (type === 'passport') targetGrid = document.getElementById('grid-passport');
+            else if (type === '1x1') targetGrid = document.getElementById('grid-1x1');
+
+            const config = sizes[type];
+
+            const img = document.createElement('img');
+            img.className = 'border-overlap';
+            
+            img.style.width = `${config.w}px`;
+            img.style.height = `${config.h}px`;
+            img.style.minWidth = `${config.w}px`;
+            img.style.maxWidth = `${config.w}px`;
+            img.style.objectFit = 'cover';
+            img.style.display = 'block';
+
+            if (type === 'passport') {
+                const tempImg = new Image();
+                tempImg.src = croppedImageData;
+                tempImg.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = tempImg.width;
+                    canvas.height = tempImg.height;
+
+                    // Rotate 90 degrees CCW to point top of head left
+                    ctx.translate(canvas.width / 2, canvas.height / 2);
+                    ctx.rotate(-90 * Math.PI / 180);
+                    ctx.drawImage(tempImg, -tempImg.width / 2, -tempImg.height / 2);
+
+                    img.src = canvas.toDataURL('image/jpeg', 1.0);
+                    targetGrid.appendChild(img);
+                };
+            } else {
+                img.src = croppedImageData;
+                targetGrid.appendChild(img);
+            }
+        }
+
+        function clearQueue() {
+            document.getElementById('grid-2x2').innerHTML = '';
+            document.getElementById('grid-passport').innerHTML = '';
+            document.getElementById('grid-1x1').innerHTML = '';
+        }
+    </script>
+</body>
+</html>
