@@ -14,13 +14,13 @@
 
     <style>
         :root {
-            /* Default border color */
             --border-color: #000000;
+            --img-brightness: 100%;
+            --img-contrast: 100%;
         }
 
         /* Canvas Setup */
         .print-area { 
-            /* Default to A4 */
             width: 210mm; 
             min-height: 297mm; 
             padding: 10mm; 
@@ -46,11 +46,18 @@
             display: none;
         }
 
+        /* Apply the brightness and contrast to the final print tiles */
         .border-overlap {
             border-right: 1px solid var(--border-color);
             border-bottom: 1px solid var(--border-color);
             box-sizing: border-box; 
             display: block;
+            filter: brightness(var(--img-brightness)) contrast(var(--img-contrast));
+        }
+
+        /* Apply the brightness and contrast to the Cropper preview live */
+        .cropper-container img {
+            filter: brightness(var(--img-brightness)) contrast(var(--img-contrast));
         }
 
         /* --- PRINT SPECIFIC RULES --- */
@@ -87,17 +94,36 @@
 
                 <div class="space-y-4">
                     
-                    <div class="bg-gray-50 border border-gray-200 p-4 rounded-lg flex gap-4">
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Paper Size</label>
-                            <select id="paperSize" onchange="updateSettings()" class="w-full border-gray-300 rounded p-2 text-sm bg-white shadow-sm border focus:ring-blue-500 focus:border-blue-500">
-                                <option value="A4">A4 (210 x 297 mm)</option>
-                                <option value="Letter">Letter / Short (8.5 x 11 in)</option>
-                            </select>
+                    <div class="bg-gray-50 border border-gray-200 p-4 rounded-lg flex flex-col gap-4">
+                        <div class="flex gap-4">
+                            <div class="flex-1">
+                                <label class="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Paper Size</label>
+                                <select id="paperSize" onchange="updateSettings()" class="w-full border-gray-300 rounded p-2 text-sm bg-white shadow-sm border focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="A4">A4 (210 x 297 mm)</option>
+                                    <option value="Letter">Letter / Short (8.5 x 11 in)</option>
+                                </select>
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Border Color</label>
+                                <input type="color" id="borderColor" value="#000000" oninput="updateSettings()" class="w-full h-9 border border-gray-300 rounded cursor-pointer shadow-sm p-0.5 bg-white">
+                            </div>
                         </div>
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Border Color</label>
-                            <input type="color" id="borderColor" value="#000000" oninput="updateSettings()" class="w-full h-9 border border-gray-300 rounded cursor-pointer shadow-sm p-0.5 bg-white">
+                        
+                        <div class="flex gap-4">
+                            <div class="flex-1">
+                                <div class="flex justify-between">
+                                    <label class="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Brightness</label>
+                                    <span class="text-xs text-gray-500" id="brightVal">100%</span>
+                                </div>
+                                <input type="range" id="brightness" min="50" max="150" value="100" oninput="updateSettings()" class="w-full cursor-pointer">
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex justify-between">
+                                    <label class="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Contrast</label>
+                                    <span class="text-xs text-gray-500" id="contrastVal">100%</span>
+                                </div>
+                                <input type="range" id="contrast" min="50" max="150" value="100" oninput="updateSettings()" class="w-full cursor-pointer">
+                            </div>
                         </div>
                     </div>
 
@@ -146,13 +172,23 @@
             '1x1': { w: 1 * pxPerInch, h: 1 * pxPerInch }
         };
 
-        // --- NEW: Settings Logic ---
+        // --- Settings Logic ---
         function updateSettings() {
             // Update Border Color
             const color = document.getElementById('borderColor').value;
             document.documentElement.style.setProperty('--border-color', color);
 
-            // Update Paper Size (Visual preview + Print setting injection)
+            // Update Brightness & Contrast
+            const bright = document.getElementById('brightness').value;
+            const contrast = document.getElementById('contrast').value;
+            
+            document.getElementById('brightVal').innerText = `${bright}%`;
+            document.getElementById('contrastVal').innerText = `${contrast}%`;
+            
+            document.documentElement.style.setProperty('--img-brightness', `${bright}%`);
+            document.documentElement.style.setProperty('--img-contrast', `${contrast}%`);
+
+            // Update Paper Size
             const paper = document.getElementById('paperSize').value;
             const printArea = document.getElementById('printArea');
             const printStyle = document.getElementById('printPageStyle');
@@ -176,6 +212,11 @@
                 img.src = event.target.result;
                 if (cropper) cropper.destroy();
                 cropper = new Cropper(img, { aspectRatio: 1, viewMode: 1 });
+                
+                // Reset sliders on new image upload
+                document.getElementById('brightness').value = 100;
+                document.getElementById('contrast').value = 100;
+                updateSettings();
             };
             reader.readAsDataURL(e.target.files[0]);
         };
