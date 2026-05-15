@@ -15,6 +15,7 @@
     <style>
         :root {
             --border-color: #000000;
+            --border-thickness: 1px;
             --img-brightness: 100%;
             --img-contrast: 100%;
         }
@@ -24,21 +25,23 @@
             width: 210mm; 
             min-height: 297mm; 
             padding: 10mm; 
+            box-sizing: border-box; 
             background: white;
             display: flex;
             flex-direction: column;
             align-items: start;
             transition: width 0.3s ease, min-height 0.3s ease;
             transform-origin: top center;
+            flex-shrink: 0; 
         }
         
         .id-grid {
             display: grid;
             gap: 0;
-            border-top: 1px solid var(--border-color);
-            border-left: 1px solid var(--border-color);
+            border-top: var(--border-thickness) solid var(--border-color);
+            border-left: var(--border-thickness) solid var(--border-color);
             width: max-content; 
-            margin-top: -1px; 
+            margin-top: calc(var(--border-thickness) * -1); 
             justify-content: start;
         }
 
@@ -46,25 +49,28 @@
             display: none;
         }
 
-        /* Apply the brightness and contrast to the final print tiles */
         .border-overlap {
-            border-right: 1px solid var(--border-color);
-            border-bottom: 1px solid var(--border-color);
+            border-right: var(--border-thickness) solid var(--border-color);
+            border-bottom: var(--border-thickness) solid var(--border-color);
             box-sizing: border-box; 
             display: block;
             filter: brightness(var(--img-brightness)) contrast(var(--img-contrast));
+            -webkit-user-drag: none;
+            user-select: none;
         }
 
-        /* Apply the brightness and contrast to the Cropper preview live */
         .cropper-container img {
             filter: brightness(var(--img-brightness)) contrast(var(--img-contrast));
         }
 
-        /* Custom Scrollbar for better UI */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 5px; border: 2px solid #e2e8f0; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        .cursor-grab { cursor: grab; }
+        .cursor-grabbing { cursor: grabbing !important; }
 
         /* --- PRINT SPECIFIC RULES --- */
         @media print {
@@ -77,15 +83,19 @@
                 display: block !important;
             }
             .no-print { display: none !important; }
-            .print-workspace {
+            .print-workspace, .print-padding-wrapper {
                 display: block !important;
                 padding: 0 !important;
+                margin: 0 !important;
                 overflow: visible !important;
                 background: transparent !important;
+                min-width: 0 !important;
+                min-height: 0 !important;
             }
             .print-area { 
                 margin: 0 !important; 
-                padding: 0 !important; 
+                /* FIXED: We keep a 10mm padding during print to ensure the border is never cut off */
+                padding: 10mm !important; 
                 border: none !important; 
                 box-shadow: none !important; 
                 width: auto !important; 
@@ -155,7 +165,15 @@
                         </div>
                     </div>
                     
-                    <div class="space-y-3">
+                    <div class="space-y-4">
+                        <div class="pb-2 border-b border-gray-200">
+                            <div class="flex justify-between">
+                                <label class="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Line Thickness</label>
+                                <span class="text-xs font-mono text-gray-600" id="thickVal">1px</span>
+                            </div>
+                            <input type="range" id="thickness" min="0" max="5" step="1" value="1" oninput="updateSettings()" class="w-full cursor-pointer accent-gray-800">
+                        </div>
+
                         <div>
                             <div class="flex justify-between">
                                 <label class="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Brightness</label>
@@ -203,18 +221,20 @@
 
             <button onclick="window.print()" class="w-full bg-green-600 text-white py-4 rounded-xl font-black text-lg hover:bg-green-700 transition shadow-lg active:scale-[0.98] flex items-center justify-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                PRINT SHEET
+                PRINT
             </button>
             
             <div class="h-4"></div>
         </div>
     </div>
 
-    <div class="flex-1 h-full overflow-y-auto bg-gray-300 print-workspace p-4 md:p-10 flex justify-center items-start shadow-inner relative z-0">
-        <div id="printArea" class="print-area shadow-2xl relative transition-all duration-300">
-            <div id="grid-2x2" class="id-grid" style="grid-template-columns: repeat(3, max-content);"></div>
-            <div id="grid-passport" class="id-grid" style="grid-template-columns: repeat(3, max-content);"></div>
-            <div id="grid-1x1" class="id-grid" style="grid-template-columns: repeat(6, max-content);"></div>
+    <div id="workspaceContainer" class="flex-1 h-full overflow-auto bg-gray-300 print-workspace relative z-0 cursor-grab shadow-inner">
+        <div class="print-padding-wrapper min-w-max min-h-full p-10 md:p-16 flex justify-center items-start">
+            <div id="printArea" class="print-area shadow-2xl relative transition-all duration-300">
+                <div id="grid-2x2" class="id-grid" style="grid-template-columns: repeat(3, max-content);"></div>
+                <div id="grid-passport" class="id-grid" style="grid-template-columns: repeat(3, max-content);"></div>
+                <div id="grid-1x1" class="id-grid" style="grid-template-columns: repeat(6, max-content);"></div>
+            </div>
         </div>
     </div>
 
@@ -233,12 +253,14 @@
             const color = document.getElementById('borderColor').value;
             document.documentElement.style.setProperty('--border-color', color);
 
+            const thickness = document.getElementById('thickness').value;
+            document.getElementById('thickVal').innerText = `${thickness}px`;
+            document.documentElement.style.setProperty('--border-thickness', `${thickness}px`);
+
             const bright = document.getElementById('brightness').value;
             const contrast = document.getElementById('contrast').value;
-            
             document.getElementById('brightVal').innerText = `${bright}%`;
             document.getElementById('contrastVal').innerText = `${contrast}%`;
-            
             document.documentElement.style.setProperty('--img-brightness', `${bright}%`);
             document.documentElement.style.setProperty('--img-contrast', `${contrast}%`);
 
@@ -333,6 +355,43 @@
             document.getElementById('grid-passport').innerHTML = '';
             document.getElementById('grid-1x1').innerHTML = '';
         }
+
+        const workspace = document.getElementById('workspaceContainer');
+        let isDown = false;
+        let startX;
+        let startY;
+        let scrollLeft;
+        let scrollTop;
+
+        workspace.addEventListener('mousedown', (e) => {
+            isDown = true;
+            workspace.classList.add('cursor-grabbing');
+            startX = e.pageX - workspace.offsetLeft;
+            startY = e.pageY - workspace.offsetTop;
+            scrollLeft = workspace.scrollLeft;
+            scrollTop = workspace.scrollTop;
+        });
+
+        workspace.addEventListener('mouseleave', () => {
+            isDown = false;
+            workspace.classList.remove('cursor-grabbing');
+        });
+
+        workspace.addEventListener('mouseup', () => {
+            isDown = false;
+            workspace.classList.remove('cursor-grabbing');
+        });
+
+        workspace.addEventListener('mousemove', (e) => {
+            if (!isDown) return;
+            e.preventDefault(); 
+            const x = e.pageX - workspace.offsetLeft;
+            const y = e.pageY - workspace.offsetTop;
+            const walkX = (x - startX) * 1.5; 
+            const walkY = (y - startY) * 1.5;
+            workspace.scrollLeft = scrollLeft - walkX;
+            workspace.scrollTop = scrollTop - walkY;
+        });
     </script>
 </body>
 </html>
